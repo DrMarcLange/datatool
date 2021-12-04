@@ -25,18 +25,18 @@ class RawDataAgg():
 
         logtuple=(
             str(datetime.datetime.now())[:16],
-            self.kwargs['p_Table'],self.kwargs['p_index_col'],self.kwargs['p_index_col'],
-            self.kwargs['t_Table'],self.kwargs['t_datetime_col'],self.kwargs['t_activity_col'],
+            self.kwargs['p_Table'],self.kwargs['p_index_col'],
+            self.kwargs['t_Table'],self.kwargs['t_datetime_col'],
             str(local_temps)
             )
         loghdr='"'+'"\t"'.join(('created_at',
-               'p_table','p_index_col','p_class_col',
-               't_table','t_datetime','t_activity_col','local_temps'))+'"'
+               'p_table','p_index_col',
+               't_table','t_datetime','local_temps'))+'"'
         local_temps = {k:self.kwargs[k] for k in local_temps.keys()}
         logstr='"'+'"\t"'.join(logtuple)+'"'
 
         if not ( self.kwargs['_DEFAULT_local_TMP_FOLDER_'] in os.listdir() ):
-            print('|------- Setting up local temporary sqlite folder\t-|')
+            print('|------- Setting up local temporary sqlite folder\t  -|')
             os.mkdir( self.kwargs['_DEFAULT_local_TMP_FOLDER_'] )
         with open(self.kwargs['_DEFAULT_local_TMP_FOLDER_']+'/configlog.tsv','w') as fi:
             fi.write(loghdr)
@@ -53,10 +53,10 @@ class RawDataAgg():
 
     def _save_p_t_to_local__(self,p,t):
         sqlite = sqlite3.connect(self.kwargs['_DEFAULT_local_TMP_DB_'])
-        p[['AGG_created_at','AGG_last_at']]=\
-               p[['AGG_created_at','AGG_last_at']].applymap(lambda x: str(x)[:19])
-        t[[self.kwargs['t_datetime_col'],'AGG_tm1','AGG_tp1']]=\
-               t[[self.kwargs['t_datetime_col'],'AGG_tm1','AGG_tp1']].applymap(lambda x: str(x)[:19])
+        p[['RAW_AGG_created_at','RAW_AGG_last_at']]=\
+               p[['RAW_AGG_created_at','RAW_AGG_last_at']].applymap(lambda x: str(x)[:19])
+        t[[self.kwargs['t_datetime_col'],'RAW_AGG_tm1','RAW_AGG_tp1']]=\
+               t[[self.kwargs['t_datetime_col'],'RAW_AGG_tm1','RAW_AGG_tp1']].applymap(lambda x: str(x)[:19])
         p.to_sql(self.kwargs['_DEFAULT_local_P_TABLE_'], sqlite, if_exists='replace', index=False)
         t.to_sql(self.kwargs['_DEFAULT_local_T_TABLE_'], sqlite, if_exists='replace', index=False)
 
@@ -65,10 +65,10 @@ class RawDataAgg():
         sqlite = sqlite3.connect(self.kwargs['_DEFAULT_local_TMP_DB_'])
         p = pd.read_sql_query('select * from '+self.kwargs['_DEFAULT_local_P_TABLE_']+';', sqlite)
         t = pd.read_sql_query('select * from '+self.kwargs['_DEFAULT_local_T_TABLE_']+';', sqlite)
-        p[['AGG_created_at','AGG_last_at']]=\
-               p[['AGG_created_at','AGG_last_at']].applymap(lambda x: str(x)[:19])
-        t[[self.kwargs['t_datetime_col'],'AGG_tm1','AGG_tp1']]=\
-               t[[self.kwargs['t_datetime_col'],'AGG_tm1','AGG_tp1']].applymap(lambda x: str(x)[:19])        
+        p[['RAW_AGG_created_at','RAW_AGG_last_at']]=\
+               p[['RAW_AGG_created_at','RAW_AGG_last_at']].applymap(lambda x: str(x)[:19])
+        t[[self.kwargs['t_datetime_col'],'RAW_AGG_tm1','RAW_AGG_tp1']]=\
+               t[[self.kwargs['t_datetime_col'],'RAW_AGG_tm1','RAW_AGG_tp1']].applymap(lambda x: str(x)[:19])        
         return p, t
 
     def _download_reference_p_t_(self,):
@@ -93,12 +93,19 @@ class RawDataAgg():
         act = lambda x: act_type1(x) if x[len(x)//2-len(x)//3]<'a' else act_type2(x)        
         # secrets = 
         # self.pysqldf = lambda q: sqldf(q, globals())
-        df[self.kwargs['t_activity_col']] = df.longstr.apply(act)
+        df['ACTIVITY_DE'] = df.longstr.apply(act)
         
         l = local_state(80)
         df['_random_index'] = df[0]
         df['t_0'] = df[1].apply(lambda x: str(x).split('.')[0])
         df['s5_02'] = df[9]
+        df['gaid'] = df[4]
+        df['s5_01']= df[8]
+        df['s5_09']= df[16]
+        df = df.rename(columns={'gaid':self.kwargs['p_index_col'],
+                                's5_09':'some_int',
+                                's5_01':'some_small_int'})
+
         df[self.kwargs['t_datetime_col']] = \
             sorted(list(
                 (df.t_0.apply(int)
@@ -110,96 +117,33 @@ class RawDataAgg():
                                      str(pd.to_datetime(int((10**8.999)*x)))[:13]
                                     +':'+str(l.randint(60))
                                     +':'+str(l.randint(60))))))
-        
-        df[self.kwargs['t_value_summer_col']] = \
-               df[self.kwargs['t_datetime_col']].apply(
-                   lambda x: (((x.month + 3) % 12) // 6 ) % 2 * 500 )               
-        df[self.kwargs['t_value_winter_col']] = \
-               df[self.kwargs['t_datetime_col']].apply(
-                   lambda x: (((x.month + 3) % 12) // 6 + 1) % 2 * 500 )
-        
-        df[self.kwargs['p_partner_c']] = df.longstr.apply(
-        lambda x: self.kwargs['p_partner_c']\
-                 +''.join(sorted(x.lower())[len(x)//2+20:len(x)//2+32]))
-        df[self.kwargs['p_class_col']] = \
-            df[[ self.kwargs['t_datetime_col'],self.kwargs['p_partner_c'] ]].\
-                apply(
-                    lambda x:
-                    x[1][7:][(x[0].month-3)%3::5]
-                    ,
-                    axis=1).apply(str.upper)               
-        df['gaid'] = df[4]
-        df['s5_01']= df[8]
-        df['s5_09']= df[16]
-        df = df.rename(columns={'gaid':self.kwargs['p_index_col'],
-                                's5_09':'some_int',
-                                's5_01':'some_small_int'})
-               
-        df['some_small_val1']=df[[self.kwargs['t_activity_col'],
-                                  'some_small_int',
-                                  self.kwargs['p_partner_c']]].\
-            applymap(str).apply(lambda x: sum([int(b) if a!=c else 0 for a,b,c in list(zip(*x))]),axis=1)
-               
-        df['some_small_val2']=df[[self.kwargs['t_activity_col'],
-                                  'some_int',
-                                  self.kwargs['p_partner_c']]].\
-            applymap(str).apply(lambda x: sum([int(b) if a!=c else 0 for a,b,c in list(zip(*x))[-2:]]),axis=1)
-               
-        df['some_small_val3'] = \
-               df[[self.kwargs['t_activity_col'],
-                   'some_int',
-                   self.kwargs['p_partner_c']]].applymap( \
-           str).apply(
-                lambda x: sum(
-                    [int(b) if a>c else -int(b)//2 % 10 for a,b,c in list(zip(*x))[-2:]]
-                             ),axis=1)
-               
-        df['something_random']=df[['longstr','some_small_val3']].apply(
-               lambda x: x[0][:x[1]],axis=1)
-               
-        t = df[[self.kwargs['t_datetime_col'],
-                 self.kwargs['p_index_col'],self.kwargs['p_class_col'],self.kwargs['p_partner_c'],
-                 self.kwargs['t_activity_col'],
-                 self.kwargs['t_value_winter_col'],self.kwargs['t_value_summer_col'],
-                 'some_int','some_small_int','some_small_val1',
-                 'some_small_val2','some_small_val3','something_random']].copy()        
+                      
+        t = df[[self.kwargs['p_index_col'],self.kwargs['t_datetime_col'],'ACTIVITY_DE',
+                'some_int','some_small_int']].copy()        
+                 
         l = local_state(44)
+        
         t['agent_id'] = 0
         t['agent_id'] = t['agent_id'].apply(\
             lambda x: l.randint(1000)+l.randint(15)\
             +(l.randint(2)+l.randint(2))*1000 )
         
-        t = t.sort_values(self.kwargs['t_datetime_col'],ascending=True).reset_index().drop(columns=['index'])
+        t = t.sort_values(self.kwargs['t_datetime_col'],ascending=True\
+            ).reset_index().drop(columns=['index'])
+            
         p = pysqldf(\
-                  f"""
-           select max({self.kwargs['p_class_col']}) {self.kwargs['p_class_col']},
-                  max({self.kwargs['p_index_col']}) {self.kwargs['p_index_col']},
-                  max({self.kwargs['p_partner_c']}) {self.kwargs['p_partner_c']},
-                round(avg({self.kwargs['t_value_summer_col']}/8),2) average_{self.kwargs['t_value_summer_col']}_per_edge,
-                round(sum({self.kwargs['t_value_summer_col']})/8,2) current_sum_{self.kwargs['t_value_summer_col']},
-                  round(avg({self.kwargs['t_value_winter_col']}),2) average_{self.kwargs['t_value_winter_col']}_per_edge,
-                  round(sum({self.kwargs['t_value_winter_col']}),2) current_sum_{self.kwargs['t_value_winter_col']},
+       f"""select max({self.kwargs['p_index_col']}) {self.kwargs['p_index_col']},
                   round(avg(some_int%97)) SOME_ORD1,
-                  round(avg(some_small_val1)) SOME_ORD2,
-                  round(avg(some_small_val3)) SOME_ORD3,
                   sum(some_small_int%100+.95) CURRENT_TOTAL,
                   agent_id
-                  from t group by agent_id""")
+           from t group by agent_id""")
+           
         t = pysqldf( f"""select p.{self.kwargs['p_index_col']},                               
                                 t.{self.kwargs['t_datetime_col']},
-                                t.{self.kwargs['p_index_col']}
-                                    event_{self.kwargs['p_index_col']},
-                                t.{self.kwargs['t_activity_col']},
-                                t.{self.kwargs['t_value_summer_col']}
-                                        {self.kwargs['t_value_summer_col']},
-                                t.{self.kwargs['t_value_winter_col']}
-                                        {self.kwargs['t_value_winter_col']},        
-                                t.some_int,
-                                t.some_small_val1,
-                                t.some_small_val2,
-                                t.something_random
+                                t.ACTIVITY_DE, t.some_int, t.some_small_int
                                 from t join p on t.agent_id = p.agent_id
                                 order by t.{self.kwargs['t_datetime_col']} desc""")
+                                
         p = p.drop(columns=['agent_id',])
         p,t = p.copy(),t.copy()        
         return p, t
@@ -207,9 +151,9 @@ class RawDataAgg():
     @property
     def raw_path_tables(self,):
         try:
+            self.p, self.t = self._read_local_p_t_
             if self.mockup:
                 return self.p, self.t
-            self.p, self.t = self._read_local_p_t_
             if self.debug:
                 print('|== RAW:    loaded preaggregated process-data     \t ==|')
             return self.p, self.t
@@ -224,95 +168,98 @@ class RawDataAgg():
                     t[self.kwargs['t_datetime_col']].apply(_cv)
                 pysqldf = lambda q: sqldf(q, globals())
                 
-                tmp = pysqldf(f"""SELECT
-                            {self.kwargs['p_index_col']},
-                            {self.kwargs['t_datetime_col']},
-                            {self.kwargs['t_activity_col']},
-                            ROW_NUMBER() OVER (PARTITION BY {self.kwargs['p_index_col']}
-                             ORDER BY {self.kwargs['t_datetime_col']}) AGG_step,
-                            t.*     
-                         FROM t;""")                
+                tmp = pysqldf(\
+                f"""SELECT {self.kwargs['p_index_col']},
+                           {self.kwargs['t_datetime_col']},                            
+                           ROW_NUMBER() OVER (PARTITION BY {self.kwargs['p_index_col']}
+                              ORDER BY {self.kwargs['t_datetime_col']}) RAW_AGG_step,
+                           t.*     
+                    FROM t;""")                
                 t = tmp.copy()
                 
-                tmp = pysqldf(f"""select tn0.{self.kwargs['p_index_col']}, tn0.AGG_step,                                        
+                tmp = pysqldf(f"""select tn0.{self.kwargs['p_index_col']}, tn0.RAW_AGG_step,                                        
                                          coalesce(tm1.{self.kwargs['t_datetime_col']},
-                                                  tn0.{self.kwargs['t_datetime_col']}) AGG_tm1,
-                                                  tn0.{self.kwargs['t_datetime_col']}  AGG_tn0,
+                                                  tn0.{self.kwargs['t_datetime_col']}) RAW_AGG_tm1,
+                                                  tn0.{self.kwargs['t_datetime_col']}  RAW_AGG_tn0,
                                          coalesce(tp1.{self.kwargs['t_datetime_col']},
-                                                  tn0.{self.kwargs['t_datetime_col']}) AGG_tp1
+                                                  tn0.{self.kwargs['t_datetime_col']}) RAW_AGG_tp1
                                    from t tn0
-                              left join t tp1 on tn0.AGG_step=tp1.AGG_step-1
+                              left join t tp1 on tn0.RAW_AGG_step=tp1.RAW_AGG_step-1
                                              and tn0.{self.kwargs['p_index_col']}
                                                = tp1.{self.kwargs['p_index_col']} 
-                              left join t tm1 on tn0.AGG_step=tm1.AGG_step+1
+                              left join t tm1 on tn0.RAW_AGG_step=tm1.RAW_AGG_step+1
                                              and tn0.{self.kwargs['p_index_col']}
                                                = tm1.{self.kwargs['p_index_col']};""")            
-                tmp = pysqldf(f"""select tmp.AGG_tm1, tmp.AGG_tp1, t.*
+                tmp = pysqldf(f"""select tmp.RAW_AGG_tm1, tmp.RAW_AGG_tp1, t.*
                                     from t
                                     join tmp  on t.{self.kwargs['p_index_col']}
                                                = tmp.{self.kwargs['p_index_col']}
-                                             and t.AGG_step = tmp.AGG_step;""")
+                                             and t.RAW_AGG_step = tmp.RAW_AGG_step;""")
                 tmp[self.kwargs['t_datetime_col']] = tmp[self.kwargs['t_datetime_col']].apply(_cv)
-                tmp['AGG_tm1'] = tmp['AGG_tm1'].apply(_cv)
-                tmp['AGG_tp1'] = tmp['AGG_tp1'].apply(_cv)
-                coarse_duration = lambda x: ( x.total_seconds()//120 - ( (x.total_seconds()//120) % 5 ))
+                tmp['RAW_AGG_tm1'] = tmp['RAW_AGG_tm1'].apply(_cv)
+                tmp['RAW_AGG_tp1'] = tmp['RAW_AGG_tp1'].apply(_cv)
+                coarse_duration = lambda x: 300*( x.total_seconds()//300 -\
+                                             ( (x.total_seconds()//300) % 5 ))
                                 
-                tmp['AGG_d_in'] = tmp[self.kwargs['t_datetime_col']] - tmp.AGG_tm1
-                tmp['AGG_d_out'] = tmp.AGG_tp1 - tmp[self.kwargs['t_datetime_col']]
+                tmp['RAW_AGG_d_in'] = tmp[self.kwargs['t_datetime_col']] - tmp.RAW_AGG_tm1
+                tmp['RAW_AGG_d_out'] = tmp.RAW_AGG_tp1 - tmp[self.kwargs['t_datetime_col']]
                               
-                tmp[['AGG_d_in','AGG_d_out']] = tmp[['AGG_d_in','AGG_d_out']].applymap(coarse_duration)                                
-                tmp['AGG_d'] = tmp.AGG_d_in + tmp.AGG_d_out
-                tmp[self.kwargs['t_datetime_col']] = tmp[self.kwargs['t_datetime_col']].apply(lambda x: str(x)[:19])       
+                tmp[['RAW_AGG_d_in','RAW_AGG_d_out']] = \
+                    tmp[['RAW_AGG_d_in','RAW_AGG_d_out']].applymap(coarse_duration)                                
+                tmp['RAW_AGG_duration'] = tmp.RAW_AGG_d_in + tmp.RAW_AGG_d_out                
+                tmp[self.kwargs['t_datetime_col']] = \
+                    tmp[self.kwargs['t_datetime_col']].apply(lambda x: str(x)[:19])       
                 
                 t = tmp.copy() 
                 
-                privileged_t_cols = list(['event_'+self.kwargs['p_index_col'],
-                                          self.kwargs['p_index_col'],
-                                          'AGG_step', 'AGG_step_countdown',                                           
-                                          'AGG_tm1', 'AGG_tp1', 'AGG_d', 
-                                          self.kwargs['t_datetime_col'],self.kwargs['t_activity_col'],
-                                          self.kwargs['t_value_summer_col'],self.kwargs['t_value_winter_col'],
-                                          'some_int', 'some_small_val1', 'some_small_val2', 'something_random', ])
+                privileged_t_cols = list([self.kwargs['p_index_col'],
+                                          self.kwargs['t_datetime_col'],
+                                          'ACTIVITY_DE',
+                                          'RAW_AGG_step', 'RAW_AGG_step_countdown',                                           
+                                          'RAW_AGG_tm1', 'RAW_AGG_tp1', 'RAW_AGG_duration', 
+                                          ])
                 rest_t_cols = sorted(list(filter(lambda x: x not in privileged_t_cols, t.columns)))                
                 
                 #TODO!!!!! hier noch viel mehr ausschlachten!! 
                 # außerdem quantile für die count geschichten
                 tmp = pysqldf(f"""select {self.kwargs['p_index_col']},
-                                  min({self.kwargs['t_datetime_col']}) AGG_created_at,
-                                  max({self.kwargs['t_datetime_col']}) AGG_last_at,
-                                  max(AGG_d)  AGG_max_d,                                  
-                                  count(*) AGG_step_count
+                                  min({self.kwargs['t_datetime_col']}) RAW_AGG_created_at,
+                                  max({self.kwargs['t_datetime_col']}) RAW_AGG_last_at,
+                                  avg(RAW_AGG_duration) RAW_AGG_avg_step_duration,
+                                  max(RAW_AGG_duration) RAW_AGG_max_step_duration,
+                                  sum(RAW_AGG_duration) RAW_AGG_sum_step_duration,                                  
+                                  count(*) RAW_AGG_step_count
                           from t
                                   group by {self.kwargs['p_index_col']};""")
                 tmp['AGG_duration'] = \
-                   (tmp.AGG_last_at.apply(_cv) - tmp.AGG_created_at.apply(_cv)).apply(coarse_duration)
+                   (tmp.RAW_AGG_last_at.apply(_cv) - tmp.RAW_AGG_created_at.apply(_cv)).apply(coarse_duration)
                 
-                p = pysqldf(f"""select tmp.AGG_created_at,
-                                       tmp.AGG_last_at,
-                                       tmp.AGG_step_count,
-                                       tmp.AGG_max_d,
+                p = pysqldf(f"""select tmp.RAW_AGG_created_at,
+                                       tmp.RAW_AGG_last_at,
+                                       tmp.RAW_AGG_step_count,
+                                       tmp.RAW_AGG_avg_step_duration,
+                                       tmp.RAW_AGG_max_step_duration,
+                                       tmp.RAW_AGG_sum_step_duration,
                                        p.* 
                           from p
                           join tmp
                                     on p.{self.kwargs['p_index_col']}=tmp.{self.kwargs['p_index_col']}
-                                  order by tmp.AGG_created_at DESC;""")
+                                  order by tmp.RAW_AGG_created_at DESC;""")
                 
                 privileged_p_cols = list([self.kwargs['p_index_col'],
-                                          'AGG_created_at', 'AGG_last_at',
-                                          'AGG_max_d', 'AGG_step_count',                                           
-                                          self.kwargs['p_class_col'],
-                                          self.kwargs['p_partner_c'],
-                                           f"average_{self.kwargs['t_value_summer_col']}_per_edge",
-                                           f"current_sum_{self.kwargs['t_value_summer_col']}",
-                                           f"average_{self.kwargs['t_value_winter_col']}_per_edge",
-                                           f"current_sum_{self.kwargs['t_value_winter_col']}"])
+                                          'RAW_AGG_created_at', 
+                                          'RAW_AGG_last_at',                                                                                   
+                                          'RAW_AGG_step_count',
+                                          'RAW_AGG_avg_step_duration',
+                                          'RAW_AGG_max_step_duration',
+                                          'RAW_AGG_sum_step_duration'])
                 rest_p_cols = sorted(list(filter(lambda x: x not in privileged_p_cols, p.columns)))
                 
                 p = p[privileged_p_cols + rest_p_cols]                
-                p = p.sort_values('AGG_created_at',
+                p = p.sort_values('RAW_AGG_created_at',
                                   ascending=True).reset_index().drop(columns=['index'])
                 
-                t = pysqldf(f"""select p.AGG_step_count - t.AGG_step AGG_step_countdown, t.*
+                t = pysqldf(f"""select p.RAW_AGG_step_count - t.RAW_AGG_step RAW_AGG_step_countdown, t.*
                                 from p
                                 join t on p.{self.kwargs['p_index_col']} = t.{self.kwargs['p_index_col']};""")
                 
@@ -333,6 +280,13 @@ class RawDataAgg():
             print(f"""|-- {'MOCKUP:' if self.mockup else 'SQL:  '} saved pre-aggregates to local sqlite  \t --|""")
             print("\\==========================================================/")                          
             return p,t
+            
+    def get_tables_and_names(self)-> tuple[pd.DataFrame, pd.DataFrame, tuple, tuple]:
+        p, t = self.raw_path_tables
+        p_names = (self.kwargs['p_Table'],self.kwargs['p_index_col'])
+        t_names = (self.kwargs['t_Table'],self.kwargs['t_datetime_col'])
+        p_cols, t_cols = p.columns, t.columns
+        return p,t,p_names,t_names,p_cols,t_cols
         
 if __name__=='__main__':
     g = RawDataAgg(**{
